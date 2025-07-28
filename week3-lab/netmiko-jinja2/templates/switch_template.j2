@@ -1,0 +1,32 @@
+{# Set hostname #}
+hostname {{ hostname }}
+
+{# VLAN Configuration #}
+{% for vlan in vlans %}
+vlan {{ vlan.id }}
+ name {{ vlan.name }}
+{% endfor %}
+
+{# Interface Configuration #}
+{% for intf in interfaces %}
+interface {{ intf.name }}
+ description {{ intf.description }}
+ switchport mode {{ intf.mode }}
+ switchport access vlan {{ intf.vlan }}
+ {% if intf.portfast %}
+ spanning-tree portfast
+ {% endif %}
+{% endfor %}
+
+{# VTY Access Control #}
+ip access-list standard {{ vty_acl_name }}
+ remark --- Allow SSH/Telnet from Management Network ---
+ permit {{ management_subnet }}
+ remark --- Allow SSH/Telnet from Lab306 Network ---
+ permit {{ lab_network }}
+ deny   any log
+!
+line vty 0 15
+ access-class {{ vty_acl_name }} in
+ transport input ssh telnet
+ login local

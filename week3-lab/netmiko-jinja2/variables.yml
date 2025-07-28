@@ -1,0 +1,97 @@
+# variables.yml
+global_config:
+  management_subnet: 172.31.147.0 0.0.0.15
+  lab_network: 10.30.6.0 0.0.0.255
+  nat_acl_name: NAT_SOURCES_ACL
+  vty_acl_name: VTY_ACCESS
+
+devices:
+  s1:
+    hostname: S1
+    device_type: cisco_ios
+    ip: 172.31.147.3
+    template: switch_template.j2
+    vlans:
+      - id: 101
+        name: Control-Data
+    interfaces:
+      - name: GigabitEthernet0/1
+        description: --- Link to R2 ---
+        mode: access
+        vlan: 101
+        portfast: true
+      - name: GigabitEthernet1/1
+        description: --- Link to UbuntuCloudGuest ---
+        mode: access
+        vlan: 101
+        portfast: true
+
+  r1:
+    hostname: R1
+    device_type: cisco_ios
+    ip: 172.31.147.4
+    template: router_template.j2
+    vrfs:
+      - name: control-data
+    loopbacks:
+      - id: 0
+        vrf: control-data
+        description: --- OSPF Router-ID ---
+        ip: 1.1.1.1 255.255.255.255
+    ospf:
+      process_id: 1
+      vrf: control-data
+      router_id: 1.1.1.1
+      networks:
+        - network: 172.31.148.0 0.0.0.15 area 0
+        - network: 172.31.149.0 0.0.0.15 area 0
+        - network: 1.1.1.1 0.0.0.0 area 0
+
+  r2:
+    hostname: R2
+    device_type: cisco_ios
+    ip: 172.31.147.5
+    template: router_template.j2
+    vrfs:
+      - name: control-data
+    loopbacks:
+      - id: 0
+        vrf: control-data
+        description: --- OSPF Router-ID ---
+        ip: 2.2.2.2 255.255.255.255
+    interfaces:
+      - name: GigabitEthernet0/1 # to R1
+        nat: inside
+      - name: GigabitEthernet0/2 # to S1
+        nat: inside
+      - name: GigabitEthernet0/3
+        description: --- Link to NAT Cloud ---
+        vrf: control-data
+        ip_address: dhcp
+        nat: outside
+        shutdown: false
+        # นี่คือ ACL สำหรับแก้ปัญหา Route Leak
+        access_group:
+          name: DENY_MGMT_TO_NAT
+          direction: out
+    nat_config:
+      acl_name: "{{ global_config.nat_acl_name }}"
+      outside_interface: GigabitEthernet0/3
+      vrf: control-data
+      sources:
+        - 172.31.148.0 0.0.0.15
+        - 172.31.149.0 0.0.0.15
+        - 172.31.150.0 0.0.0.15
+    ospf:
+      process_id: 1
+      vrf: control-data
+      router_id: 2.2.2.2
+      networks:
+        - network: 172.31.149.0 0.0.0.15 area 0
+        - network: 172.31.150.0 0.0.0.15 area 0
+        - network: 2.2.2.2 0.0.0.0 area 0
+      default_info_originate: true
+    static_routes:
+      - vrf: control-data
+        prefix: 0.0.0.0 0.0.0.0
+        next_hop: GigabitEthernet0/3 dhcp

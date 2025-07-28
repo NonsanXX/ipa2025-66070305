@@ -1,0 +1,98 @@
+{# Set hostname #}
+hostname {{ hostname }}
+
+{# VRF Definitions #}
+{% for vrf in vrfs %}
+ip vrf {{ vrf.name }}
+{% endfor %}
+
+{# Loopback Interfaces #}
+{% for lo in loopbacks %}
+interface Loopback{{ lo.id }}
+ {% if lo.vrf %}
+ ip vrf forwarding {{ lo.vrf }}
+ {% endif %}
+ description {{ lo.description }}
+ ip address {{ lo.ip }}
+{% endfor %}
+
+{# General Interface Configuration #}
+{% for intf in interfaces %}
+interface {{ intf.name }}
+ {% if intf.description %}
+ description {{ intf.description }}
+ {% endif %}
+ {% if intf.vrf %}
+ ip vrf forwarding {{ intf.vrf }}
+ {% endif %}
+ {% if intf.ip_address %}
+ ip address {{ intf.ip_address }}
+ {% endif %}
+ {% if intf.nat %}
+ ip nat {{ intf.nat }}
+ {% endif %}
+ {% if intf.access_group %}
+ ip access-group {{ intf.access_group.name }} {{ intf.access_group.direction }}
+ {% endif %}
+ {% if intf.shutdown == false %}
+ no shutdown
+ {% endif %}
+{% endfor %}
+
+{# ACL for NAT Source (Only on R2) #}
+{% if nat_config %}
+ip access-list standard {{ nat_config.acl_name }}
+ remark --- Define traffic to be translated ---
+ {% for source in nat_config.sources %}
+ permit {{ source }}
+ {% endfor %}
+{% endif %}
+
+{# ACL to prevent Route Leak (Only on R2) - THIS IS THE FIX #}
+{% if interfaces %}
+ {% for intf in interfaces if intf.access_group %}
+ip access-list extended {{ intf.access_group.name }}
+ remark --- Prevent Control-Data Plane from reaching Management Plane via NAT ---
+ deny ip any {{ management_subnet }}
+ remark --- Allow all other traffic to be NAT-ed ---
+ permit ip any any
+ {% endfor %}
+{% endif %}
+
+
+{# NAT Configuration (Only on R2) #}
+{% if nat_config %}
+ip nat inside source list {{ nat_config.acl_name }} interface {{ nat_config.outside_interface }} vrf {{ nat_config.vrf }} overload
+{% endif %}
+
+{# Static Routes #}
+{% if static_routes %}
+ {% for route in static_routes %}
+ip route vrf {{ route.vrf }} {{ route.prefix }} {{ route.next_hop }}
+ {% endfor %}
+{% endif %}
+
+{# OSPF Configuration #}
+{% if ospf %}
+router ospf {{ ospf.process_id }} vrf {{ ospf.vrf }}
+ router-id {{ ospf.router_id }}
+ {% for network in ospf.networks %}
+ network {{ network }}
+ {% endfor %}
+ {% if ospf.default_info_originate %}
+ default-information originate
+ {% endif %}
+{% endif %}
+
+{# VTY Access Control #}
+ip access-list standard {{ vty_acl_name }}
+ remark --- Allow SSH/Telnet from Management Network ---
+ permit {{ management_subnet }}
+ remark --- Allow SSH/Telnet from Lab306 Network ---
+ permit {{ lab_network }}
+ deny   any log
+!
+line vty 0 15
+ access-class {{ vty_acl_name }} in
+ transport input ssh telnet
+ login local

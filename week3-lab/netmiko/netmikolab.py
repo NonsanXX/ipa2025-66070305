@@ -1,8 +1,6 @@
 from netmiko import ConnectHandler
 import os
 
-
-
 private_key_path = os.path.expanduser('~/.ssh/admin_openssh')
 
 legacy_crypto_settings = {
