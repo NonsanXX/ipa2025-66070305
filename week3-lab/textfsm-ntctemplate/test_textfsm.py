@@ -1,5 +1,5 @@
 import pytest
-from textfsmlab import generate_descriptions
+from textfsm import generate_descriptions
 
 def test_r1_descriptions():
     parsed_data = [
